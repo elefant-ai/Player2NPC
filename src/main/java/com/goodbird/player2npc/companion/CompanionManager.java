@@ -12,7 +12,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,6 +32,7 @@ public class CompanionManager implements Component, ServerTickingComponent {
     private final ServerPlayerEntity _player;
 
     private final Map<String, UUID> _companionMap = new ConcurrentHashMap<>();
+    private final Map<String, NbtCompound> _despawnedCompanionData = new ConcurrentHashMap<>();
 
     private List<Character> _assignedCharacters = new ArrayList<>();
     private boolean _needsToSummon = false;
@@ -71,31 +71,46 @@ public class CompanionManager implements Component, ServerTickingComponent {
     }
 
     public void ensureCompanionExists(Character character) {
-              LOGGER.info("ensureCompanionExists for character={}", character);
+        LOGGER.info("ensureCompanionExists for character={}", character);
         if (_player.getWorld() == null || _player.getServer() == null)
             return;
 
         UUID companionUuid = _companionMap.get(character.name());
         ServerWorld world = _player.getServerWorld();
-        Entity existingCompanion = (companionUuid != null) ? world.getEntity(companionUuid) : null;
+        if (_despawnedCompanionData.containsKey(character.name())) {
+            NbtCompound savedState = _despawnedCompanionData.remove(character.name());
+            AutomatoneEntity restoredCompanion = new AutomatoneEntity(_player.getWorld(), character, _player);
 
-        BlockPos spawnPos = _player.getBlockPos().add(
-                _player.getRandom().nextInt(3) - 1,
-                1,
-                _player.getRandom().nextInt(3) - 1);
+            restoredCompanion.readCustomDataFromNbt(savedState);
 
-        if (existingCompanion instanceof AutomatoneEntity && existingCompanion.isAlive()) {
-            existingCompanion.teleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
-                        System.out.println("Teleported existing companion: " + character.name() + " for player " + this._player.getName().getString());
-        } else {
-            AutomatoneEntity newCompanion = new AutomatoneEntity(_player.getWorld(), character, _player);
-            newCompanion.refreshPositionAndAngles(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
-                    _player.getYaw(), 0);
+            BlockPos spawnPos = _player.getBlockPos().add(_player.getRandom().nextInt(3) - 1, 1, _player.getRandom().nextInt(3) - 1);
+            restoredCompanion.refreshPositionAndAngles(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, _player.getYaw(), 0);
 
-            world.spawnEntity(newCompanion);
-            _companionMap.put(character.name(), newCompanion.getUuid());
+            world.spawnEntity(restoredCompanion);
+            _companionMap.put(character.name(), restoredCompanion.getUuid());
             System.out.println(
-                    "Summoned new companion: " + character.name() + " for player " + _player.getName().getString());
+                    "Restored companion from saved state: " + character.name() + " for player " + _player.getName().getString());
+        } else {
+            Entity existingCompanion = (companionUuid != null) ? world.getEntity(companionUuid) : null;
+
+            BlockPos spawnPos = _player.getBlockPos().add(
+                    _player.getRandom().nextInt(3) - 1,
+                    1,
+                    _player.getRandom().nextInt(3) - 1);
+
+            if (existingCompanion instanceof AutomatoneEntity && existingCompanion.isAlive()) {
+                existingCompanion.teleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                System.out.println("Teleported existing companion: " + character.name() + " for player " + this._player.getName().getString());
+            } else {
+                AutomatoneEntity newCompanion = new AutomatoneEntity(_player.getWorld(), character, _player);
+                newCompanion.refreshPositionAndAngles(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
+                        _player.getYaw(), 0);
+
+                world.spawnEntity(newCompanion);
+                _companionMap.put(character.name(), newCompanion.getUuid());
+                System.out.println(
+                        "Summoned new companion: " + character.name() + " for player " + _player.getName().getString());
+            }
         }
     }
 
@@ -104,7 +119,10 @@ public class CompanionManager implements Component, ServerTickingComponent {
         if (companionUuid != null && _player.getServer() != null) {
             for (ServerWorld world : _player.getServer().getWorlds()) {
                 Entity companion = world.getEntity(companionUuid);
-                if (companion instanceof AutomatoneEntity) {
+                if (companion instanceof AutomatoneEntity automatone) {
+                    NbtCompound savedState = new NbtCompound();
+                    automatone.writeCustomDataToNbt(savedState);
+                    _despawnedCompanionData.put(characterName, savedState);
                     companion.discard();
                     System.out.println(
                             "Dismissed companion: " + characterName + " for player " + _player.getName().getString());
@@ -139,7 +157,7 @@ public class CompanionManager implements Component, ServerTickingComponent {
 
     @Override
     public void serverTick() {
-        if (_needsToSummon) {
+        if (_needsToSummon && !_assignedCharacters.isEmpty()) {
             summonCompanions();
             _needsToSummon = false;
         }
@@ -147,9 +165,17 @@ public class CompanionManager implements Component, ServerTickingComponent {
 
     @Override
     public void readFromNbt(NbtCompound tag) {
+        _companionMap.clear();
+        _despawnedCompanionData.clear();
+
         NbtCompound companionsTag = tag.getCompound("companions");
         for (String key : companionsTag.getKeys()) {
             _companionMap.put(key, companionsTag.getUuid(key));
+        }
+
+        NbtCompound despawnedTag = tag.getCompound("despawnedCompanions");
+        for (String key : despawnedTag.getKeys()) {
+            _despawnedCompanionData.put(key, despawnedTag.getCompound(key));
         }
     }
 
@@ -158,5 +184,9 @@ public class CompanionManager implements Component, ServerTickingComponent {
         NbtCompound companionsTag = new NbtCompound();
         _companionMap.forEach(companionsTag::putUuid);
         tag.put("companions", companionsTag);
+
+        NbtCompound despawnedTag = new NbtCompound();
+        _despawnedCompanionData.forEach(despawnedTag::put);
+        tag.put("despawnedCompanions", despawnedTag);
     }
 }

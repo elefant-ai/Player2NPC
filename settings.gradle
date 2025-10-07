@@ -1,20 +1,14 @@
 pluginManagement {
     repositories {
-        maven {
-            name = 'Quilt'
-            url = 'https://maven.quiltmc.org/repository/release'
-        }
-        maven {
-            name = 'Cotton'
-            url = 'https://server.bbkr.space/artifactory/libs-release/'
-        }
-        maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.architectury.dev/' }
+        maven { url = 'https://files.minecraftforge.net/maven/' }
         gradlePluginPortal()
-        mavenLocal()
     }
 }
 
-rootProject.name = mod_name.toLowerCase(Locale.ROOT).replace(' ', '-')
+rootProject.name = 'player2npc'
+
+include 'common'
+include 'fabric'
+include 'forge'

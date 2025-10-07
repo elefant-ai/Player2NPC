@@ -39,7 +39,15 @@ public class CompanionManager {
     }
 
     public static CompanionManager get(ServerPlayer player){
-        return cache.computeIfAbsent(player.getName().getString(), (name)-> new CompanionManager(player));
+        return cache.computeIfAbsent(player.getName().getString(), (name)-> {
+            CompanionManager manager = new CompanionManager(player);
+            manager.readFromNbt();
+            return manager;
+        });
+    }
+
+    public static void remove(ServerPlayer player){
+        cache.remove(player.getName().getString());
     }
 
     public void summonAllCompanionsAsync() {
@@ -131,10 +139,11 @@ public class CompanionManager {
                     this._despawnedCompanionData.put(characterName, savedState);
                     companion.discard();
                     System.out.println("Dismissed companion: " + characterName + " for player " + this._player.getName().getString());
+                    writeToNbt();
                     return;
                 }
             }
-            writeToNbt();
+
         }
 
     }

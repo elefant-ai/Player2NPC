@@ -13,6 +13,7 @@ import com.goodbird.player2npc.network.AutomatoneSpawnRequestPacket;
 import java.util.Objects;
 
 import dev.architectury.networking.NetworkManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -35,7 +36,7 @@ public class CharacterDetailScreen extends Screen {
         super.init();
         this.addRenderableWidget(Button.builder(Component.nullToEmpty("Summon"), (button) -> {
             System.out.println("Summoning: " + this.character.name());
-            NetworkManager.sendToServer(Player2NPC.SPAWN_REQUEST_PACKET_ID, AutomatoneSpawnRequestPacket.create(this.character));
+            NetworkManager.sendToServer(Player2NPC.SPAWN_REQUEST_PACKET_ID, AutomatoneSpawnRequestPacket.create(Minecraft.getInstance().level.registryAccess(), this.character));
             if (this.minecraft != null) {
                 this.minecraft.setScreen((Screen)null);
             }
@@ -43,7 +44,7 @@ public class CharacterDetailScreen extends Screen {
         }).bounds(this.width / 2 - 100, this.height - 100, 98, 20).build());
         this.addRenderableWidget(Button.builder(Component.nullToEmpty("Despawn"), (button) -> {
             System.out.println("Summoning: " + this.character.name());
-            NetworkManager.sendToServer(Player2NPC.DESPAWN_REQUEST_PACKET_ID, AutomatoneDespawnRequestPacket.create(this.character));
+            NetworkManager.sendToServer(Player2NPC.DESPAWN_REQUEST_PACKET_ID, AutomatoneDespawnRequestPacket.create(Minecraft.getInstance().level.registryAccess(),this.character));
             if (this.minecraft != null) {
                 this.minecraft.setScreen((Screen)null);
             }
@@ -58,7 +59,7 @@ public class CharacterDetailScreen extends Screen {
     }
 
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(graphics);
+        this.renderBackground(graphics, mouseX, mouseY, delta);
         graphics.drawCenteredString(this.font, this.character.name(), this.width / 2, 130, 16777215);
         int headSize = 96;
         int headX = this.width / 2 - headSize / 2;

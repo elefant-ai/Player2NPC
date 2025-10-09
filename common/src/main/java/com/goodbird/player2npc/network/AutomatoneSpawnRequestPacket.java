@@ -5,7 +5,9 @@ import com.player2.playerengine.player2api.utils.CharacterUtils;
 import com.goodbird.player2npc.companion.CompanionManager;
 import dev.architectury.networking.NetworkManager;
 import io.netty.buffer.Unpooled;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,8 +24,8 @@ public class AutomatoneSpawnRequestPacket {
         this.character = CharacterUtils.readFromBuf(buf);
     }
 
-    public static FriendlyByteBuf create(Character character) {
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+    public static RegistryFriendlyByteBuf create(RegistryAccess access, Character character) {
+        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), access);
         new AutomatoneSpawnRequestPacket(character).write(buf);
         return buf;
     }

@@ -152,14 +152,14 @@ public class RenderAutomaton extends LivingEntityRenderer<AutomatoneEntity, Play
             }
         }
 
-        return npc.textureLocation == null ? DefaultPlayerSkin.getDefaultSkin() : npc.textureLocation;
+        return npc.textureLocation == null ? DefaultPlayerSkin.getDefaultTexture() : npc.textureLocation;
     }
 
     private void loadSkin(File file, ResourceLocation resource, String par1Str, boolean fix64) {
         TextureManager texturemanager = Minecraft.getInstance().getTextureManager();
         AbstractTexture object = texturemanager.getTexture(resource, (AbstractTexture)null);
         if (object == null) {
-            ResourceDownloader.load(new ImageDownloadAlt(file, par1Str, resource, DefaultPlayerSkin.getDefaultSkin(), fix64, () -> {
+            ResourceDownloader.load(new ImageDownloadAlt(file, par1Str, resource, DefaultPlayerSkin.getDefaultTexture(), fix64, () -> {
             }));
         }
 
@@ -173,7 +173,7 @@ public class RenderAutomaton extends LivingEntityRenderer<AutomatoneEntity, Play
     protected void setupTransforms(AutomatoneEntity automatoneEntity, PoseStack matrixStack, float f, float g, float h) {
         float i = automatoneEntity.getSwimAmount(h);
         if (automatoneEntity.isFallFlying()) {
-            super.setupRotations(automatoneEntity, matrixStack, f, g, h);
+            super.setupRotations(automatoneEntity, matrixStack, f, g, h, i);
             float j = (float)automatoneEntity.getFallFlyingTicks() + h;
             float k = Mth.clamp(j * j / 100.0F, 0.0F, 1.0F);
             if (!automatoneEntity.isAutoSpinAttack()) {
@@ -190,7 +190,7 @@ public class RenderAutomaton extends LivingEntityRenderer<AutomatoneEntity, Play
                 matrixStack.mulPose(Axis.YP.rotation((float)(Math.signum(m) * Math.acos(l))));
             }
         } else if (i > 0.0F) {
-            super.setupRotations(automatoneEntity, matrixStack, f, g, h);
+            super.setupRotations(automatoneEntity, matrixStack, f, g, h, i);
             float j = automatoneEntity.isInWater() ? -90.0F - automatoneEntity.getXRot() : -90.0F;
             float k = Mth.lerp(i, 0.0F, j);
             matrixStack.mulPose(Axis.XP.rotationDegrees(k));
@@ -198,7 +198,7 @@ public class RenderAutomaton extends LivingEntityRenderer<AutomatoneEntity, Play
                 matrixStack.translate(0.0F, -1.0F, 0.3F);
             }
         } else {
-            super.setupRotations(automatoneEntity, matrixStack, f, g, h);
+            super.setupRotations(automatoneEntity, matrixStack, f, g, h, i);
         }
 
     }

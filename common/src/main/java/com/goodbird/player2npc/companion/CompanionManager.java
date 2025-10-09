@@ -103,7 +103,7 @@ public class CompanionManager {
                 BlockPos spawnPos = this._player.blockPosition().offset(this._player.getRandom().nextInt(3) - 1, 1, this._player.getRandom().nextInt(3) - 1);
                 if (existingCompanion instanceof AutomatoneEntity && existingCompanion.isAlive()) {
                     LOGGER.info("ensureCompanionExists TP");
-                    existingCompanion.teleportToWithTicket((double)spawnPos.getX() + (double)0.5F, (double)spawnPos.getY(), (double)spawnPos.getZ() + (double)0.5F);
+                    existingCompanion.moveTo((double)spawnPos.getX() + (double)0.5F, (double)spawnPos.getY(), (double)spawnPos.getZ() + (double)0.5F);
                     PrintStream var11 = System.out;
                     String var13 = character.name();
                     var11.println("Teleported existing companion: " + var13 + " for player " + this._player.getName().getString());

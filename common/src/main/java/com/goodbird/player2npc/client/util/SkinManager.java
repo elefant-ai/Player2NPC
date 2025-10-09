@@ -13,7 +13,7 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.ResourceLocation;
 
 public class SkinManager {
-    private static final ResourceLocation STEVE_SKIN_ID = new ResourceLocation("textures/entity/player/wide/steve.png");
+    private static final ResourceLocation STEVE_SKIN_ID = ResourceLocation.parse("textures/entity/player/wide/steve.png");
 
     public SkinManager() {
     }

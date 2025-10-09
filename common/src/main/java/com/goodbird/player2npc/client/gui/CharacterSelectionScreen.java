@@ -64,7 +64,7 @@ public class CharacterSelectionScreen extends Screen {
     }
 
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(graphics);
+        this.renderBackground(graphics, mouseX, mouseY, delta);
         graphics.drawCenteredString(this.font, "Select a Character", this.width / 2, 20, 16777215);
         if (this.isLoading) {
             graphics.drawCenteredString(this.font, "Loading...", this.width / 2, this.height / 2, 11184810);

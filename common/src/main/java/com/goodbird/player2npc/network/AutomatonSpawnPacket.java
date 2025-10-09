@@ -11,13 +11,16 @@ import com.goodbird.player2npc.companion.AutomatoneEntity;
 import com.player2.playerengine.automaton.api.entity.LivingEntityInventory;
 import com.player2.playerengine.player2api.utils.CharacterUtils;
 import dev.architectury.networking.NetworkManager;
+import dev.architectury.networking.SpawnEntityPacket;
 import io.netty.buffer.Unpooled;
 import java.util.UUID;
 
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.world.entity.LivingEntity;
@@ -44,7 +47,7 @@ public class AutomatonSpawnPacket {
         this.inventory = entity.inventory;
     }
 
-    public AutomatonSpawnPacket(FriendlyByteBuf buf) {
+    public AutomatonSpawnPacket(RegistryFriendlyByteBuf buf) {
         this.id = buf.readVarInt();
         this.uuid = buf.readUUID();
         this.pos = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
@@ -53,16 +56,16 @@ public class AutomatonSpawnPacket {
         this.yaw = (float)(buf.readByte() * 360) / 256.0F;
         this.character = CharacterUtils.readFromBuf(buf);
         this.inventory = new LivingEntityInventory((LivingEntity)null);
-        this.inventory.readNbt(buf.readNbt().getList("inv", 10));
+        this.inventory.readNbt(buf.registryAccess(), buf.readNbt().getList("inv", 10));
     }
 
-    public static Packet<ClientGamePacketListener> create(AutomatoneEntity entity) {
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        (new AutomatonSpawnPacket(entity)).write(buf);
+    public static Packet<ClientGamePacketListener> create(RegistryAccess access, AutomatoneEntity entity) {
+        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), access);
+        (new AutomatonSpawnPacket(entity)).write(access, buf);
         return (Packet<ClientGamePacketListener>) NetworkManager.toPacket(NetworkManager.Side.S2C, Player2NPC.SPAWN_PACKET_ID, buf);
     }
 
-    public void write(FriendlyByteBuf buf) {
+    public void write(RegistryAccess access, FriendlyByteBuf buf) {
         buf.writeVarInt(this.id);
         buf.writeUUID(this.uuid);
         buf.writeDouble(this.pos.x);
@@ -75,11 +78,11 @@ public class AutomatonSpawnPacket {
         buf.writeByte((byte)((int)(this.yaw * 256.0F / 360.0F)));
         CharacterUtils.writeToBuf(buf, this.character);
         CompoundTag compound = new CompoundTag();
-        compound.put("inv", this.inventory.writeNbt(new ListTag()));
+        compound.put("inv", this.inventory.writeNbt(access, new ListTag()));
         buf.writeNbt(compound);
     }
 
-    public static void handle(FriendlyByteBuf var3, NetworkManager.PacketContext var4) {
+    public static void handle(RegistryFriendlyByteBuf var3, NetworkManager.PacketContext var4) {
         AutomatonSpawnPacket packet = new AutomatonSpawnPacket(var3);
         var4.queue(() -> {
             ClientLevel world = (ClientLevel) var4.getPlayer().level();
@@ -94,7 +97,7 @@ public class AutomatonSpawnPacket {
             entity.setCharacter(packet.character);
             packet.inventory.player = entity;
             entity.inventory = packet.inventory;
-            world.putNonPlayerEntity(packet.id, entity);
+            world.addEntity(entity);
         });
     }
 }

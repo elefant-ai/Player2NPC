@@ -26,13 +26,17 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerEntity;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot.Type;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -58,7 +62,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
     }
 
     public void init() {
-        this.setMaxUpStep(0.6F);
+//        this.setMaxUpStep(0.6F);
         this.setSpeed(0.4F);
         this.manager = new LivingEntityInteractionManager(this);
         this.inventory = new LivingEntityInventory(this);
@@ -96,7 +100,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
         }
 
         ListTag nbtList = tag.getList("Inventory", 10);
-        this.inventory.readNbt(nbtList);
+        this.inventory.readNbt(level().registryAccess(), nbtList);
         this.inventory.selectedSlot = tag.getInt("SelectedItemSlot");
         if (this.character == null && tag.contains("character")) {
             CompoundTag compound = tag.getCompound("character");
@@ -113,7 +117,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putFloat("head_yaw", this.yHeadRot);
-        tag.put("Inventory", this.inventory.writeNbt(new ListTag()));
+        tag.put("Inventory", this.inventory.writeNbt(level().registryAccess(), new ListTag()));
         tag.putInt("SelectedItemSlot", this.inventory.selectedSlot);
         if (this.character != null) {
             CompoundTag compound = new CompoundTag();
@@ -167,29 +171,30 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
 
     }
 
-    public boolean doHurtTarget(Entity target) {
-        this.attackStrengthTicker = 0;
+    public boolean doHurtTarget(Entity entity) {
         float f = (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
-        float g = (float)this.getAttributeValue(Attributes.ATTACK_KNOCKBACK);
-        if (target instanceof LivingEntity) {
-            f += EnchantmentHelper.getDamageBonus(this.getMainHandItem(), ((LivingEntity)target).getMobType());
-            g += (float)EnchantmentHelper.getKnockbackBonus(this);
+        DamageSource damageSource = this.damageSources().mobAttack(this);
+        Level l = this.level();
+        if (l instanceof ServerLevel serverLevel) {
+            f = EnchantmentHelper.modifyDamage(serverLevel, this.getWeaponItem(), entity, damageSource, f);
         }
 
-        int i = EnchantmentHelper.getFireAspect(this);
-        if (i > 0) {
-            target.setSecondsOnFire(i * 4);
-        }
-
-        boolean bl = target.hurt(this.damageSources().mobAttack(this), f);
+        boolean bl = entity.hurt(damageSource, f);
         if (bl) {
-            if (g > 0.0F && target instanceof LivingEntity) {
-                ((LivingEntity)target).knockback((double)(g * 0.5F), (double)Mth.sin(this.getYRot() * ((float)Math.PI / 180F)), (double)(-Mth.cos(this.getYRot() * ((float)Math.PI / 180F))));
+            float g = this.getKnockback(entity, damageSource);
+            if (g > 0.0F && entity instanceof LivingEntity) {
+                LivingEntity livingEntity = (LivingEntity)entity;
+                livingEntity.knockback((double)(g * 0.5F), (double)Mth.sin(this.getYRot() * ((float)Math.PI / 180F)), (double)(-Mth.cos(this.getYRot() * ((float)Math.PI / 180F))));
                 this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, (double)1.0F, 0.6));
             }
 
-            this.doEnchantDamageEffects(this, target);
-            this.setLastHurtMob(target);
+            Level var7 = this.level();
+            if (var7 instanceof ServerLevel) {
+                ServerLevel serverLevel2 = (ServerLevel)var7;
+                EnchantmentHelper.doPostAttackEffects(serverLevel2, entity, damageSource);
+            }
+
+            this.setLastHurtMob(entity);
         }
 
         return bl;
@@ -216,7 +221,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
         } else if (slot == EquipmentSlot.OFFHAND) {
             return (ItemStack)this.inventory.offHand.get(0);
         } else {
-            return slot.getType() == Type.ARMOR ? (ItemStack)this.inventory.armor.get(slot.getIndex()) : ItemStack.EMPTY;
+            return slot.getType() == Type.HUMANOID_ARMOR ? (ItemStack)this.inventory.armor.get(slot.getIndex()) : ItemStack.EMPTY;
         }
     }
 
@@ -225,7 +230,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
             this.inventory.setItem(this.inventory.selectedSlot, stack);
         } else if (slot == EquipmentSlot.OFFHAND) {
             this.inventory.offHand.set(0, stack);
-        } else if (slot.getType() == Type.ARMOR) {
+        } else if (slot.getType() == Type.HUMANOID_ARMOR) {
             this.inventory.armor.set(slot.getIndex(), stack);
         }
 
@@ -243,8 +248,9 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
         return this.lastVelocity.lerp(this.getDeltaMovement(), (double)delta);
     }
 
-    public Packet<ClientGamePacketListener> getAddEntityPacket() {
-        return AutomatonSpawnPacket.create(this);
+    @Override
+    public Packet<ClientGamePacketListener> getAddEntityPacket(ServerEntity serverEntity) {
+        return AutomatonSpawnPacket.create(level().registryAccess(), this);
     }
 
     public Component getDisplayName() {

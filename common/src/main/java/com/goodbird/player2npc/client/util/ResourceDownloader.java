@@ -46,7 +46,7 @@ public class ResourceDownloader {
     public static ResourceLocation getUrlResourceLocation(String url, boolean fixSkin) {
         String var10002 = "cnpcaicompanion";
         int var10003 = (url + fixSkin).hashCode();
-        return new ResourceLocation(var10002, "skins/" + var10003 + (fixSkin ? "" : "32"));
+        return ResourceLocation.fromNamespaceAndPath(var10002, "skins/" + var10003 + (fixSkin ? "" : "32"));
     }
 
     public static File getUrlFile(String url, boolean fixSkin) {

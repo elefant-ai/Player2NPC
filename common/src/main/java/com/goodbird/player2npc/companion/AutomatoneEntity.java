@@ -29,6 +29,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
+import net.minecraft.world.ItemStackWithSlot;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -44,7 +45,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.Optional;
 
 public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInventoryProvider, IInteractionManagerProvider, IHungerManagerProvider {
     public LivingEntityInteractionManager manager;
@@ -67,7 +72,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
         this.manager = new LivingEntityInteractionManager(this);
         this.inventory = new LivingEntityInventory(this);
         this.hungerManager = new LivingEntityHungerManager();
-        if (!this.level().isClientSide && this.character != null) {
+        if (!this.level().isClientSide() && this.character != null) {
             this.controller = new PlayerEngineController((IBaritone)IBaritone.KEY.get(this), this.character, "player2-ai-npc-minecraft");
             ConversationManager.sendGreeting(this.controller, this.character);
         }
@@ -93,17 +98,17 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
         return this.hungerManager;
     }
 
-    public void readAdditionalSaveData(CompoundTag tag) {
-        super.readAdditionalSaveData(tag);
-        if (tag.contains("head_yaw")) {
-            this.yHeadRot = tag.getFloat("head_yaw");
-        }
+    @Override
+    protected void readAdditionalSaveData(ValueInput valueInput) {
+        super.readAdditionalSaveData(valueInput);
+        this.yHeadRot = valueInput.getFloatOr("head_yaw", 0);
 
-        ListTag nbtList = tag.getList("Inventory", 10);
-        this.inventory.readNbt(level().registryAccess(), nbtList);
-        this.inventory.selectedSlot = tag.getInt("SelectedItemSlot");
-        if (this.character == null && tag.contains("character")) {
-            CompoundTag compound = tag.getCompound("character");
+        this.inventory.readNbt(valueInput.listOrEmpty("Inventory", ItemStackWithSlot.CODEC));
+
+        this.inventory.selectedSlot = valueInput.getIntOr("SelectedItemSlot", 0);
+        Optional<CompoundTag> characterTag = valueInput.read("character", CompoundTag.CODEC);
+        if (this.character == null && characterTag.isPresent()) {
+            CompoundTag compound = characterTag.get();
             this.character = CharacterUtils.readFromNBT(compound);
             if (this.controller == null) {
                 this.controller = new PlayerEngineController((IBaritone)IBaritone.KEY.get(this), this.character, "player2-ai-npc-minecraft");
@@ -111,28 +116,62 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
 
             ConversationManager.sendGreeting(this.controller, this.character);
         }
-
     }
+//
+//    public void readAdditionalSaveData(CompoundTag tag) {
+//        super.readAdditionalSaveData(tag);
+//        if (tag.contains("head_yaw")) {
+//            this.yHeadRot = tag.getFloat("head_yaw").get();
+//        }
+//
+//        ListTag nbtList = tag.getList("Inventory").get();
+//        this.inventory.readNbt(level().registryAccess(), nbtList);
+//
+//        this.inventory.selectedSlot = tag.getInt("SelectedItemSlot").get();
+//        if (this.character == null && tag.contains("character")) {
+//            CompoundTag compound = tag.getCompound("character").get();
+//            this.character = CharacterUtils.readFromNBT(compound);
+//            if (this.controller == null) {
+//                this.controller = new PlayerEngineController((IBaritone)IBaritone.KEY.get(this), this.character, "player2-ai-npc-minecraft");
+//            }
+//
+//            ConversationManager.sendGreeting(this.controller, this.character);
+//        }
+//
+//    }
 
-    public void addAdditionalSaveData(CompoundTag tag) {
-        super.addAdditionalSaveData(tag);
-        tag.putFloat("head_yaw", this.yHeadRot);
-        tag.put("Inventory", this.inventory.writeNbt(level().registryAccess(), new ListTag()));
-        tag.putInt("SelectedItemSlot", this.inventory.selectedSlot);
+    @Override
+    protected void addAdditionalSaveData(ValueOutput valueOutput) {
+        super.addAdditionalSaveData(valueOutput);
+        valueOutput.putFloat("head_yaw", this.yHeadRot);
+        this.inventory.writeNbt(valueOutput.list("Inventory", ItemStackWithSlot.CODEC));
+        valueOutput.putInt("SelectedItemSlot", this.inventory.selectedSlot);
         if (this.character != null) {
             CompoundTag compound = new CompoundTag();
             CharacterUtils.writeToNBT(compound, this.character);
-            tag.put("character", compound);
+            valueOutput.store("character", CompoundTag.CODEC, compound);
         }
-
     }
+
+//    public void addAdditionalSaveData(CompoundTag tag) {
+//        super.addAdditionalSaveData(tag);
+//        tag.putFloat("head_yaw", this.yHeadRot);
+//        tag.put("Inventory", this.inventory.writeNbt(level().registryAccess(), new ListTag()));
+//        tag.putInt("SelectedItemSlot", this.inventory.selectedSlot);
+//        if (this.character != null) {
+//            CompoundTag compound = new CompoundTag();
+//            CharacterUtils.writeToNBT(compound, this.character);
+//            tag.put("character", compound);
+//        }
+//
+//    }
 
     public void tick() {
         this.lastVelocity = this.getDeltaMovement();
         this.manager.update();
         this.inventory.updateItems();
         ++this.attackStrengthTicker;
-        if (!this.level().isClientSide) {
+        if (!this.level().isClientSide()) {
             this.controller.serverTick();
         }
 
@@ -151,7 +190,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
     }
 
     public void pickupItems() {
-        if (!this.level().isClientSide && this.isAlive() && !this.dead && this.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
+        if (!this.level().isClientSide() && this.isAlive() && !this.dead && this.level().getServer().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) {
             Vec3i vec3i = new Vec3i(3, 3, 3);
 
             for(ItemEntity itemEntity : this.level().getEntitiesOfClass(ItemEntity.class, this.getBoundingBox().inflate((double)vec3i.getX(), (double)vec3i.getY(), (double)vec3i.getZ()))) {
@@ -179,7 +218,7 @@ public class AutomatoneEntity extends LivingEntity implements IAutomatone, IInve
             f = EnchantmentHelper.modifyDamage(serverLevel, this.getWeaponItem(), entity, damageSource, f);
         }
 
-        boolean bl = entity.hurt(damageSource, f);
+        boolean bl = entity.hurtOrSimulate(damageSource, f);
         if (bl) {
             float g = this.getKnockback(entity, damageSource);
             if (g > 0.0F && entity instanceof LivingEntity) {

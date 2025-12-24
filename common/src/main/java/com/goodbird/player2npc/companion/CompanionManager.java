@@ -21,7 +21,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -52,7 +57,7 @@ public class CompanionManager {
 
     public void summonAllCompanionsAsync() {
         this._needsToSummon = true;
-        CompletableFuture.supplyAsync(() -> CharacterUtils.requestCharacters(this._player, "player2-ai-npc-minecraft")).thenAcceptAsync((characters) -> this._assignedCharacters = new ArrayList(Arrays.asList(characters)), this._player.getServer());
+        CompletableFuture.supplyAsync(() -> CharacterUtils.requestCharacters(this._player, "player2-ai-npc-minecraft")).thenAcceptAsync((characters) -> this._assignedCharacters = new ArrayList(Arrays.asList(characters)), this._player.level().getServer());
     }
 
     private void summonCompanions() {
@@ -77,18 +82,19 @@ public class CompanionManager {
 
     public void ensureCompanionExists(Character character) {
         LOGGER.info("ensureCompanionExists for character={}", character);
-        if (this._player.level() != null && this._player.getServer() != null) {
+        if (this._player.level() != null && this._player.level().getServer() != null) {
             LOGGER.info("ensureCompanionExists NOTNULL");
             UUID companionUuid = (UUID)this._companionMap.get(character.name());
-            ServerLevel world = this._player.serverLevel();
+            ServerLevel world = this._player.level();
             if (this._despawnedCompanionData.containsKey(character.name())) {
                 LOGGER.info("ensureCompanionExists DESPAWNED");
                 try {
                     CompoundTag savedState = (CompoundTag) this._despawnedCompanionData.remove(character.name());
                     AutomatoneEntity restoredCompanion = new AutomatoneEntity(this._player.level(), character, this._player);
-                    restoredCompanion.readAdditionalSaveData(savedState);
+                    ValueInput input = TagValueInput.create(ProblemReporter.DISCARDING, this._player.registryAccess(), savedState);
+                    restoredCompanion.readAdditionalSaveData(input);
                     BlockPos spawnPos = this._player.blockPosition().offset(this._player.getRandom().nextInt(3) - 1, 1, this._player.getRandom().nextInt(3) - 1);
-                    restoredCompanion.moveTo((double) spawnPos.getX() + (double) 0.5F, (double) spawnPos.getY(), (double) spawnPos.getZ() + (double) 0.5F, this._player.getYRot(), 0.0F);
+                    restoredCompanion.snapTo((double) spawnPos.getX() + (double) 0.5F, (double) spawnPos.getY(), (double) spawnPos.getZ() + (double) 0.5F, this._player.getYRot(), 0.0F);
                     world.addFreshEntity(restoredCompanion);
                     this._companionMap.put(character.name(), restoredCompanion.getUUID());
                     PrintStream var10000 = System.out;
@@ -103,7 +109,7 @@ public class CompanionManager {
                 BlockPos spawnPos = this._player.blockPosition().offset(this._player.getRandom().nextInt(3) - 1, 1, this._player.getRandom().nextInt(3) - 1);
                 if (existingCompanion instanceof AutomatoneEntity && existingCompanion.isAlive()) {
                     LOGGER.info("ensureCompanionExists TP");
-                    existingCompanion.moveTo((double)spawnPos.getX() + (double)0.5F, (double)spawnPos.getY(), (double)spawnPos.getZ() + (double)0.5F);
+                    existingCompanion.snapTo((double)spawnPos.getX() + (double)0.5F, (double)spawnPos.getY(), (double)spawnPos.getZ() + (double)0.5F);
                     PrintStream var11 = System.out;
                     String var13 = character.name();
                     var11.println("Teleported existing companion: " + var13 + " for player " + this._player.getName().getString());
@@ -111,7 +117,7 @@ public class CompanionManager {
                     LOGGER.info("ensureCompanionExists SPAWN");
                     try {
                         AutomatoneEntity newCompanion = new AutomatoneEntity(this._player.level(), character, this._player);
-                        newCompanion.moveTo((double) spawnPos.getX() + (double) 0.5F, (double) spawnPos.getY(), (double) spawnPos.getZ() + (double) 0.5F, this._player.getYRot(), 0.0F);
+                        newCompanion.snapTo((double) spawnPos.getX() + (double) 0.5F, (double) spawnPos.getY(), (double) spawnPos.getZ() + (double) 0.5F, this._player.getYRot(), 0.0F);
                         world.addFreshEntity(newCompanion);
                         this._companionMap.put(character.name(), newCompanion.getUUID());
                         PrintStream var10 = System.out;
@@ -129,14 +135,14 @@ public class CompanionManager {
 
     public void dismissCompanion(String characterName) {
         UUID companionUuid = (UUID)this._companionMap.remove(characterName);
-        if (companionUuid != null && this._player.getServer() != null) {
-            for(ServerLevel world : this._player.getServer().getAllLevels()) {
+        if (companionUuid != null && this._player.level().getServer() != null) {
+            for(ServerLevel world : this._player.level().getServer().getAllLevels()) {
                 Entity companion = world.getEntity(companionUuid);
                 if (companion instanceof AutomatoneEntity) {
                     AutomatoneEntity automatone = (AutomatoneEntity)companion;
-                    CompoundTag savedState = new CompoundTag();
-                    automatone.addAdditionalSaveData(savedState);
-                    this._despawnedCompanionData.put(characterName, savedState);
+                    TagValueOutput output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, this._player.registryAccess());
+                    automatone.addAdditionalSaveData(output);
+                    this._despawnedCompanionData.put(characterName, output.buildResult());
                     companion.discard();
                     System.out.println("Dismissed companion: " + characterName + " for player " + this._player.getName().getString());
                     writeToNbt();
@@ -156,11 +162,11 @@ public class CompanionManager {
 
     public List<AutomatoneEntity> getActiveCompanions() {
         List<AutomatoneEntity> companions = new ArrayList();
-        if (this._player.getServer() == null) {
+        if (this._player.level().getServer() == null) {
             return companions;
         } else {
             for(UUID uuid : this._companionMap.values()) {
-                for(ServerLevel world : this._player.getServer().getAllLevels()) {
+                for(ServerLevel world : this._player.level().getServer().getAllLevels()) {
                     Entity entity = world.getEntity(uuid);
                     if (entity instanceof AutomatoneEntity) {
                         AutomatoneEntity companion = (AutomatoneEntity)entity;
@@ -189,16 +195,16 @@ public class CompanionManager {
         if(tag.isEmpty()) return;
         this._companionMap.clear();
         this._despawnedCompanionData.clear();
-        CompoundTag companionsTag = tag.getCompound("companions");
+        CompoundTag companionsTag = tag.getCompound("companions").get();
 
-        for(String key : companionsTag.getAllKeys()) {
-            this._companionMap.put(key, companionsTag.getUUID(key));
+        for(String key : companionsTag.keySet()) {
+            this._companionMap.put(key, UUID.fromString(companionsTag.getString(key).get()));
         }
 
-        CompoundTag despawnedTag = tag.getCompound("despawnedCompanions");
+        CompoundTag despawnedTag = tag.getCompound("despawnedCompanions").get();
 
-        for(String key : despawnedTag.getAllKeys()) {
-            this._despawnedCompanionData.put(key, despawnedTag.getCompound(key));
+        for(String key : despawnedTag.keySet()) {
+            this._despawnedCompanionData.put(key, despawnedTag.getCompound(key).get());
         }
 
     }
@@ -206,7 +212,7 @@ public class CompanionManager {
     public void writeToNbt() {
         CompoundTag tag = ((IEntityPersistentData)_player).getPersistentData();
         CompoundTag companionsTag = new CompoundTag();
-        this._companionMap.forEach(companionsTag::putUUID);
+        this._companionMap.forEach((k, v)-> companionsTag.putString(k, v.toString()));
         tag.put("companions", companionsTag);
         CompoundTag despawnedTag = new CompoundTag();
         this._despawnedCompanionData.forEach(despawnedTag::put);

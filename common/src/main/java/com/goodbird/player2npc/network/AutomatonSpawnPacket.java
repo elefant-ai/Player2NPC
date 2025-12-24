@@ -5,26 +5,38 @@
 
 package com.goodbird.player2npc.network;
 
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Streams;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
 import com.player2.playerengine.player2api.Character;
 import com.goodbird.player2npc.Player2NPC;
 import com.goodbird.player2npc.companion.AutomatoneEntity;
 import com.player2.playerengine.automaton.api.entity.LivingEntityInventory;
 import com.player2.playerengine.player2api.utils.CharacterUtils;
 import dev.architectury.networking.NetworkManager;
-import dev.architectury.networking.SpawnEntityPacket;
 import io.netty.buffer.Unpooled;
-import java.util.UUID;
+
+import java.util.*;
+import java.util.stream.Stream;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.ItemStackWithSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.storage.*;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 public class AutomatonSpawnPacket {
     private final int id;
@@ -56,7 +68,8 @@ public class AutomatonSpawnPacket {
         this.yaw = (float)(buf.readByte() * 360) / 256.0F;
         this.character = CharacterUtils.readFromBuf(buf);
         this.inventory = new LivingEntityInventory((LivingEntity)null);
-        this.inventory.readNbt(buf.registryAccess(), buf.readNbt().getList("inv", 10));
+        TypedInputListWrapper<ItemStackWithSlot> wrapper = new TypedInputListWrapper<ItemStackWithSlot>(ProblemReporter.DISCARDING, "inv", new ValueInputContextHelper(buf.registryAccess(), NbtOps.INSTANCE), ItemStackWithSlot.CODEC, buf.readNbt().getList("inv").get());
+        this.inventory.readNbt(wrapper);
     }
 
     public static Packet<ClientGamePacketListener> create(RegistryAccess access, AutomatoneEntity entity) {
@@ -78,7 +91,10 @@ public class AutomatonSpawnPacket {
         buf.writeByte((byte)((int)(this.yaw * 256.0F / 360.0F)));
         CharacterUtils.writeToBuf(buf, this.character);
         CompoundTag compound = new CompoundTag();
-        compound.put("inv", this.inventory.writeNbt(access, new ListTag()));
+        ListTag list = new ListTag();
+        TypedOutputListWrapper<ItemStackWithSlot> wrapper = new TypedOutputListWrapper<>(ProblemReporter.DISCARDING, "inv", NbtOps.INSTANCE, ItemStackWithSlot.CODEC, list);
+        this.inventory.writeNbt(wrapper);
+        compound.put("inv", list);
         buf.writeNbt(compound);
     }
 
@@ -90,14 +106,121 @@ public class AutomatonSpawnPacket {
             entity.setId(packet.id);
             entity.setUUID(packet.uuid);
             entity.syncPacketPositionCodec(packet.pos.x, packet.pos.y, packet.pos.z);
-            entity.moveTo(packet.pos.x, packet.pos.y, packet.pos.z);
+            entity.snapTo(packet.pos.x, packet.pos.y, packet.pos.z, packet.pitch, packet.yaw);
             entity.setDeltaMovement(packet.velocity);
-            entity.setXRot(packet.pitch);
-            entity.setYRot(packet.yaw);
             entity.setCharacter(packet.character);
             packet.inventory.player = entity;
             entity.inventory = packet.inventory;
             world.addEntity(entity);
         });
+    }
+
+    static class TypedInputListWrapper<T> implements ValueInput.TypedInputList<T> {
+        private final ProblemReporter problemReporter;
+        private final String name;
+        final ValueInputContextHelper context;
+        final Codec<T> codec;
+        private final ListTag list;
+
+        TypedInputListWrapper(ProblemReporter problemReporter, String string, ValueInputContextHelper valueInputContextHelper, Codec<T> codec, ListTag listTag) {
+            this.problemReporter = problemReporter;
+            this.name = string;
+            this.context = valueInputContextHelper;
+            this.codec = codec;
+            this.list = listTag;
+        }
+
+        public boolean isEmpty() {
+            return this.list.isEmpty();
+        }
+
+        void reportIndexUnwrapProblem(int i, Tag tag, DataResult.Error<?> error) {
+            this.problemReporter.report(new TagValueInput.DecodeFromListFailedProblem(this.name, i, tag, error));
+        }
+
+        public Stream<T> stream() {
+            return Streams.mapWithIndex(this.list.stream(), (tag, l) -> {
+                DataResult<T> var10000 = this.codec.parse(this.context.ops(), tag);
+                T var8;
+                switch (var10000) {
+                    case DataResult.Success<T> success:
+                        var8 = success.value();
+                        break;
+                    case DataResult.Error<T> error:
+                        this.reportIndexUnwrapProblem((int)l, tag, error);
+                        var8 = error.partialValue().orElse(null);
+                        break;
+                }
+
+                return var8;
+            }).filter(Objects::nonNull);
+        }
+
+        public Iterator<T> iterator() {
+            final ListIterator<Tag> listIterator = this.list.listIterator();
+            return new AbstractIterator<>() {
+                @Nullable
+                protected T computeNext() {
+                    while (true) {
+                        if (listIterator.hasNext()) {
+                            int i = listIterator.nextIndex();
+                            Tag tag = listIterator.next();
+                            DataResult<T> var10000 = codec.parse(context.ops(), tag);
+                            switch (var10000) {
+                                case DataResult.Success<T> success:
+                                    return success.value();
+                                case DataResult.Error<T> error:
+                                    reportIndexUnwrapProblem(i, tag, error);
+                                    if (!error.partialValue().isPresent()) {
+                                        continue;
+                                    }
+
+                                    return error.partialValue().get();
+                            }
+                        }
+
+                        return this.endOfData();
+                    }
+                }
+            };
+        }
+    }
+
+
+    static class TypedOutputListWrapper<T> implements ValueOutput.TypedOutputList<T> {
+        private final ProblemReporter problemReporter;
+        private final String name;
+        private final DynamicOps<Tag> ops;
+        private final Codec<T> codec;
+        private final ListTag output;
+
+        TypedOutputListWrapper(ProblemReporter problemReporter, String string, DynamicOps<Tag> dynamicOps, Codec<T> codec, ListTag listTag) {
+            this.problemReporter = problemReporter;
+            this.name = string;
+            this.ops = dynamicOps;
+            this.codec = codec;
+            this.output = listTag;
+        }
+
+        public void add(T object) {
+            DataResult<Tag> var10000 = this.codec.encodeStart(this.ops, object);
+            switch (var10000) {
+                case DataResult.Success<Tag> success:
+                    this.output.add(success.value());
+                    break;
+                case DataResult.Error<Tag> error:
+                    this.problemReporter.report(new TagValueOutput.EncodeToListFailedProblem(this.name, object, error));
+                    Optional<Tag> var6 = error.partialValue();
+                    ListTag var10001 = this.output;
+                    Objects.requireNonNull(var10001);
+                    var6.ifPresent(var10001::add);
+                    break;
+            }
+
+        }
+
+        public boolean isEmpty() {
+            return this.output.isEmpty();
+        }
     }
 }

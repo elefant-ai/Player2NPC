@@ -14,6 +14,7 @@ import dev.architectury.networking.NetworkManager;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
 import dev.architectury.registry.client.level.entity.EntityRendererRegistry;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.resources.ResourceLocation;
 
 public class Player2NPCClient {
     private static KeyMapping openCharacterScreenKeybind;
@@ -25,7 +26,7 @@ public class Player2NPCClient {
     public static void onInitializeClient() {
         EntityRendererRegistry.register(Player2NPC.AUTOMATONE, RenderAutomaton::new);
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, Player2NPC.SPAWN_PACKET_ID, AutomatonSpawnPacket::handle);
-        openCharacterScreenKeybind = new KeyMapping("key.player2npc.open_character_screen", Type.KEYSYM, 72, "category.player2npc.keys");
+        openCharacterScreenKeybind = new KeyMapping("key.player2npc.open_character_screen", Type.KEYSYM, 72,  new KeyMapping.Category(ResourceLocation.fromNamespaceAndPath("player2npc", "category.player2npc.keys")));
         KeyMappingRegistry.register(openCharacterScreenKeybind);
         ClientTickEvent.CLIENT_POST.register((client) -> {
             if (openCharacterScreenKeybind.consumeClick() && client.level != null) {

@@ -17,6 +17,7 @@ import dev.architectury.registry.level.entity.EntityAttributeRegistry;
 import dev.architectury.registry.registries.DeferredRegister;
 import dev.architectury.registry.registries.RegistrySupplier;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -42,7 +43,7 @@ public class Player2NPC {
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister.create(MOD_ID, Registries.ENTITY_TYPE);
     public static RegistrySupplier<EntityType<AutomatoneEntity>> AUTOMATONE = ENTITY_TYPES.register(id("aicompanion"), () -> {
         LOGGER.info("REGISTER");
-        EntityType<AutomatoneEntity> AUTOMATONE = EntityType.Builder.<AutomatoneEntity>of(AutomatoneEntity::new, MobCategory.CREATURE).sized(EntityType.PLAYER.getWidth(), EntityType.PLAYER.getHeight()).clientTrackingRange(64).updateInterval(1).build(id("aicompanion").toString());
+        EntityType<AutomatoneEntity> AUTOMATONE = EntityType.Builder.<AutomatoneEntity>of(AutomatoneEntity::new, MobCategory.CREATURE).sized(EntityType.PLAYER.getWidth(), EntityType.PLAYER.getHeight()).clientTrackingRange(64).updateInterval(1).build(ResourceKey.create(Registries.ENTITY_TYPE, id("aicompanion")));
         LOGGER.info("CREATE");
         return AUTOMATONE;
     });

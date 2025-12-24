@@ -17,6 +17,8 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.SimpleTexture;
+import net.minecraft.client.renderer.texture.TextureContents;
+import net.minecraft.client.resources.metadata.texture.TextureMetadataSection;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.apache.commons.io.FileUtils;
@@ -42,47 +44,48 @@ public class ImageDownloadAlt extends SimpleTexture {
         this.r = r;
     }
 
-    public void setImage(NativeImage image) {
-        Minecraft.getInstance().execute(() -> {
-            this.uploaded = true;
-            if (!RenderSystem.isOnRenderThread()) {
-                RenderSystem.recordRenderCall(() -> this.upload(image));
-            } else {
-                this.upload(image);
-            }
+//    public void setImage(NativeImage image) {
+//        Minecraft.getInstance().execute(() -> {
+//            this.uploaded = true;
+//            if (!RenderSystem.isOnRenderThread()) {
+//                RenderSystem.recordRenderCall(() -> this.upload(image));
+//            } else {
+//                this.upload(image);
+//            }
+//
+//            this.r.run();
+//        });
+//    }
+//
+//    private void upload(NativeImage imageIn) {
+//        TextureUtil.prepareImage(this.resourceId(), imageIn.getWidth(), imageIn.getHeight());
+//        imageIn.upload(0, 0, 0, true);
+//    }
 
-            this.r.run();
-        });
-    }
-
-    private void upload(NativeImage imageIn) {
-        TextureUtil.prepareImage(this.getId(), imageIn.getWidth(), imageIn.getHeight());
-        imageIn.upload(0, 0, 0, true);
-    }
-
-    public void load(ResourceManager resourceManager) throws IOException {
+    public TextureContents loadContents(ResourceManager resourceManager) throws IOException {
         if (this.cacheFile != null && this.cacheFile.isFile()) {
             logger.debug("Loading http texture from local cache ({})", new Object[]{this.cacheFile});
             NativeImage image = null;
 
             try {
                 image = NativeImage.read(new FileInputStream(this.cacheFile));
-                this.setImage(this.parseUserSkin(image));
-                return;
+                //this.setImage(this.parseUserSkin(image));
+                return new TextureContents(this.parseUserSkin(image), new TextureMetadataSection(false, false));
             } catch (IOException ioexception) {
-                super.load(resourceManager);
                 logger.error("Couldn't load skin {}", this.cacheFile, ioexception);
+                return super.loadContents(resourceManager);
             }
         }
 
         if (!this.uploaded) {
             try {
                 this.uploaded = true;
-                super.load(resourceManager);
+                return super.loadContents(resourceManager);
             } catch (Exception var4) {
             }
         }
 
+        return super.loadContents(resourceManager);
     }
 
     public void loadTextureFromServer() {
@@ -149,7 +152,7 @@ public class ImageDownloadAlt extends SimpleTexture {
     private static void setAreaTransparent(NativeImage image, int x, int y, int width, int height) {
         for(int i = x; i < width; ++i) {
             for(int j = y; j < height; ++j) {
-                int k = image.getPixelRGBA(i, j);
+                int k = image.getPixel(i, j);
                 if ((k >> 24 & 255) < 128) {
                     return;
                 }
@@ -158,7 +161,7 @@ public class ImageDownloadAlt extends SimpleTexture {
 
         for(int l = x; l < width; ++l) {
             for(int i1 = y; i1 < height; ++i1) {
-                image.setPixelRGBA(l, i1, image.getPixelRGBA(l, i1) & 16777215);
+                image.setPixel(l, i1, image.getPixel(l, i1) & 16777215);
             }
         }
 
